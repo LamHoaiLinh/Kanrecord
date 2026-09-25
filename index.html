@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="x-ua-compatible" content="ie=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#dff3e6">
+  <title>Kanrecode — Quay màn hình</title>
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+  <link href="index.css" rel="stylesheet">
+</head>
+<body>
+  <main>
+    <aside id="controls-panel" aria-label="Bảng công cụ Kanrecode">
+      <div class="brand-card">
+        <div class="brand-mark">K</div>
+        <div><h1>Kanrecode</h1><p>Quay màn hình · hoàn toàn cục bộ</p></div>
+      </div>
+
+      <div class="quick-start" aria-label="Bắt đầu nhanh">
+        <div class="quick-step"><span>1</span><div><strong>Chọn màn hình</strong><small>Thêm cửa sổ, tab hoặc toàn màn hình.</small></div></div>
+        <button type="button" id="target-request-button" data-tooltip="Chọn cửa sổ, tab hoặc màn hình cần quay">＋ Chọn màn hình</button>
+        <div class="quick-step"><span>2</span><div><strong>Sắp xếp</strong><small>Kéo, phóng to, xoay ngay trên khung xem trước.</small></div></div>
+        <div class="quick-step"><span>3</span><div><strong>Bắt đầu quay</strong><small>Chọn micro, FPS và chất lượng khi cần.</small></div></div>
+      </div>
+
+      <button type="button" id="instructions-modal-button" class="side-action" data-tooltip="Xem hướng dẫn sử dụng nhanh">? Hướng dẫn nhanh</button>
+      <button type="button" id="teleprompt-area-button" class="side-action" data-tooltip="Hiện lời thoại để đọc trong lúc quay">▤ Teleprompter</button>
+
+      <details id="targets-panel" open>
+        <summary id="targets-panel-summary" data-tooltip="Quản lý các nguồn màn hình đang quay">Màn hình đã chọn</summary>
+        <div>
+          <p class="section-hint">Bấm một nguồn để chỉnh. Nguồn nằm trên danh sách sẽ hiển thị phía trên.</p>
+          <div id="current-targets-hold" class="empty-state" data-empty-text="Chưa có nguồn nào. Bấm “Chọn màn hình”."></div>
+          <p class="mini-hint">Đổi thứ tự: chọn nguồn rồi dùng <b>Shift + ↑/↓</b>.</p>
+        </div>
+      </details>
+
+      <details id="background-details-panel">
+        <summary data-tooltip="Đổi màu hoặc dùng ảnh nền cho video">Nền video</summary>
+        <div>
+          <h2>Màu nền</h2>
+          <div class="compact-row">
+            <label id="background-color-button" for="background-color-input">Chọn màu</label>
+            <input id="background-color-input" type="color" value="#f6fbf7" title="Màu nền video">
+          </div>
+          <h2>Ảnh nền</h2>
+          <p class="section-hint">Kéo ảnh vào cửa sổ hoặc chọn tệp.</p>
+          <label id="background-upload-button" class="file-button" for="background-upload" data-tooltip="PNG, JPG hoặc WEBP">Chọn ảnh nền</label>
+          <input type="file" id="background-upload" name="background-upload" accept="image/png, image/jpeg, image/jpg, image/webp" multiple>
+          <button type="button" id="background-image-hide" class="secondary-button">Ẩn ảnh nền</button>
+          <div id="background-image-hold"></div>
+        </div>
+      </details>
+
+      <details id="head-panel">
+        <summary data-tooltip="Thêm camera nhỏ vào video">Camera người nói</summary>
+        <div>
+          <div class="talking-head-parameters">
+            <label for="talking-head-camera">Camera</label>
+            <select id="talking-head-camera"><option value="none">Không dùng</option></select>
+            <label for="use-talking-head">Bật camera</label><input id="use-talking-head" autocomplete="off" type="checkbox">
+            <label for="show-talking-head">Hiển thị</label><input id="show-talking-head" autocomplete="off" type="checkbox" checked disabled>
+          </div>
+          <h3>Vị trí & hiển thị</h3>
+          <div class="talking-head-parameters slider-grid">
+            <label for="head-horizontal">Ngang</label><input type="range" class="head-controls" id="head-horizontal" min="-25" max="125" value="75" disabled>
+            <label for="head-vertical">Dọc</label><input type="range" class="head-controls" id="head-vertical" min="-25" max="125" value="75" disabled>
+            <label for="head-scale">Kích thước</label><input type="range" class="head-controls" id="head-scale" min="0" max="2" value="1" step="0.01" disabled>
+            <label for="head-opacity">Độ mờ</label><input type="range" class="head-controls" id="head-opacity" min="0" max="1" value="1" step="0.01" disabled>
+            <label for="head-rotation">Xoay</label><input type="range" class="head-controls" id="head-rotation" min="0" max="360" value="0" disabled>
+            <label for="head-shape">Bo góc</label><input type="range" class="head-controls" id="head-shape" min="0" max="50" value="15" step="1" disabled>
+            <label for="head-background">Xóa nền</label><select id="head-background"><option value="0">Tắt</option><option value="1">Bật</option></select>
+            <label for="head-filter">Bộ lọc</label><select id="head-filter"><option value="none">Không</option><option value="blur">Mờ</option><option value="monochrome">Đơn sắc</option></select>
+          </div>
+        </div>
+      </details>
+
+      <details id="scribbles-panel">
+        <summary data-tooltip="Vẽ trực tiếp lên video khi đang quay">Bút chú thích</summary>
+        <div>
+          <div class="scribbles-parameters">
+            <label for="use-scribbles">Bật vẽ</label><input id="use-scribbles" autocomplete="off" type="checkbox">
+            <label id="scribbles-color-button" for="scribbles-color-input">Màu nét</label><input id="scribbles-color-input" type="color" value="#197a55">
+            <label for="scribbles-width">Độ dày</label><input type="range" class="scribbles-controls" id="scribbles-width" min="1" max="10" value="3" step="1">
+          </div>
+          <div class="button-row">
+            <button type="button" id="scribbles-line-undo" class="secondary-button" data-tooltip="Alt+Z">↶ Hoàn tác</button>
+            <button type="button" id="scribbles-line-redo" class="secondary-button" data-tooltip="Alt+Y">↷ Làm lại</button>
+            <button type="button" id="scribbles-line-clear" class="secondary-button" data-tooltip="Alt+X">⌫ Xóa nét</button>
+          </div>
+        </div>
+      </details>
+
+      <details id="logo-panel">
+        <summary data-tooltip="Chèn logo vào video">Logo</summary>
+        <div class="logo-parameters">
+          <label for="logo-choice">Mẫu logo</label><select id="logo-choice"></select>
+          <label for="logo-position">Vị trí</label>
+          <select id="logo-position">
+            <option value="hide">Ẩn</option><option value="top-left">Trên trái</option><option value="bottom-left">Dưới trái</option><option value="bottom-right">Dưới phải</option><option value="top-right">Trên phải</option>
+          </select>
+        </div>
+      </details>
+
+      <div class="privacy-note">🔒 Video được xử lý trong trình duyệt và lưu về máy. Kanrecode không tải bản ghi lên máy chủ.</div>
+    </aside>
+
+    <section id="app-panel">
+      <div id="teleprompter-panel">
+        <div id="teleprompter-controls">
+          <button type="button" id="teleprompt-editor-modal-button">Sửa lời thoại</button>
+          <button type="button" id="teleprompt-test-button">Chạy thử</button>
+        </div>
+        <div id="teleprompter-reading" aria-live="assertive" aria-atomic="true" aria-relevant="text">Lời thoại sẽ hiện ở đây</div>
+        <div id="teleprompter-stage" aria-live="polite" aria-atomic="true" aria-relevant="text">Ghi chú sân khấu</div>
+      </div>
+
+      <div id="top-bar">
+        <div id="control-buttons">
+          <button type="button" id="dimensions-modal-button" disabled data-tooltip="Độ phân giải và tỷ lệ khung hình">▣ Khung hình</button>
+          <button type="button" id="recording-modal-button" class="primary-record" disabled data-tooltip="Cấu hình nhanh và bắt đầu quay">● Quay</button>
+          <button type="button" id="recording-pause-button" class="pause-button" hidden data-tooltip="Tạm dừng/tiếp tục bản ghi">Ⅱ Tạm dừng</button>
+        </div>
+        <div id="top-right-feedback">
+          <span id="status-pill" class="status-pill">Sẵn sàng</span>
+          <div id="recording-timer" role="timer" aria-live="off" aria-atomic="true" aria-relevant="text" aria-hidden="true">00:00:00</div>
+          <div id="microphone-level" role="status" aria-label="Mức âm lượng microphone" aria-live="off" aria-atomic="true" aria-relevant="text" aria-hidden="true"><div id="meter-bar"></div></div>
+        </div>
+      </div>
+
+      <div id="my-canvas-container">
+        <canvas id="my-canvas" data-scrawl-canvas data-is-responsive="true" data-base-width="1280" data-base-height="720" data-base-background-color="#f6fbf7" data-fit="contain" data-label="Khung xem trước Kanrecode" data-description="Quay màn hình cục bộ trong trình duyệt.">
+          <div class="assets" aria-hidden="true">
+            <img id="logo-v1" src="assets/logo-v1.svg" class="logos" data-label="Kanrecode Light" alt="Kanrecode logo sáng">
+            <img id="logo-v2" src="assets/logo-v2.svg" class="logos" data-label="Kanrecode Badge" alt="Kanrecode logo huy hiệu">
+            <img id="logo-v3" src="assets/logo-v3.svg" class="logos" data-label="Kanrecode Mini" alt="Kanrecode logo nhỏ">
+          </div>
+        </canvas>
+      </div>
+
+      <div id="entity-control-panel">
+        <div id="entity-heading"><p>Đang chỉnh: <span id="entity-being-edited">chưa chọn nguồn</span></p><p>Kích thước: <span id="current-canvas-dimensions">1280 × 720</span></p></div>
+        <div id="entity-controls">
+          <div><label for="startX">Ngang</label><input class="target-update" id="startX" type="range" min="-25" max="125" value="50" step="1" disabled></div>
+          <div><label for="startY">Dọc</label><input class="target-update" id="startY" type="range" min="-25" max="125" value="50" step="1" disabled></div>
+          <div><label for="scale">Phóng to</label><input class="target-update" id="scale" type="range" min="0" max="2" value="1" step="0.01" disabled></div>
+          <div><label for="roll">Xoay</label><input class="target-update" id="roll" type="range" min="0" max="360" value="0" step="1" disabled></div>
+          <div><label for="opacity">Độ mờ</label><input class="target-update" id="opacity" type="range" min="0" max="1" value="1" step="0.01" disabled></div>
+          <div><label for="target-filter">Bộ lọc</label><select id="target-filter" disabled><option value="none">Không</option><option value="sharpen">Nét hơn</option><option value="gray">Trắng đen</option><option value="nowhite">Bỏ nền trắng</option></select></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="dimensions-modal" closedby="any">
+    <button type="button" id="dimensions-modal-close" autofocus class="close" data-tooltip="Đóng">×</button>
+    <div class="dialog-heading"><span class="dialog-icon">▣</span><div><h2>Khung hình video</h2><p>Chọn nhanh theo nơi anh dự định đăng video.</p></div></div>
+    <div class="selector"><label for="video-dimensions">Kích thước</label><select id="video-dimensions">
+      <option value="landscape_1080">16:9 · 1920 × 1080 · Full HD</option><option value="landscape_720">16:9 · 1280 × 720 · HD</option><option value="landscape_480">16:9 · 854 × 480 · Nhẹ</option>
+      <option value="square_1080">1:1 · 1080 × 1080</option><option value="square_720">1:1 · 720 × 720</option><option value="square_480">1:1 · 480 × 480</option>
+      <option value="portrait_1080">9:16 · 1080 × 1920 · Dọc Full HD</option><option value="portrait_720">9:16 · 720 × 1280 · Dọc HD</option><option value="portrait_480">9:16 · 480 × 854 · Dọc nhẹ</option>
+    </select></div>
+  </dialog>
+
+  <dialog id="recording-modal" closedby="any" class="record-dialog">
+    <button type="button" id="recording-modal-close" autofocus class="close" data-tooltip="Đóng">×</button>
+    <div class="dialog-heading"><span class="dialog-icon record-dot">●</span><div><h2>Bắt đầu quay</h2><p>Mặc định đã tối ưu cho video hướng dẫn desktop.</p></div></div>
+    <div class="recording-parameters">
+      <label for="recording-microphone">Microphone</label><select id="recording-microphone"><option value="none">Không dùng micro</option></select>
+      <label for="include-system-audio">Âm thanh màn hình/tab</label><label class="switch-line"><input id="include-system-audio" type="checkbox" checked><span>Ghi nếu nguồn chia sẻ có âm thanh</span></label>
+      <label for="recording-fps">Khung hình/giây</label><select id="recording-fps"><option value="25">25 FPS · nhẹ</option><option value="30" selected>30 FPS · khuyên dùng</option><option value="60">60 FPS · mượt, nặng hơn</option></select>
+      <label for="recording-quality">Chất lượng</label><select id="recording-quality"><option value="4000000">4 Mbps · nhẹ</option><option value="8000000" selected>8 Mbps · cân bằng</option><option value="12000000">12 Mbps · rõ chữ</option><option value="20000000">20 Mbps · rất cao</option></select>
+      <label for="file-name">Tên tệp</label><input type="text" id="file-name" value="Kanrecode-recording">
+      <label for="video-output-filetype">Định dạng</label><select id="video-output-filetype"><option value="mp4">MP4 nếu trình duyệt hỗ trợ</option><option value="webm">WebM · tương thích tốt</option></select>
+      <details class="advanced-settings"><summary>Nâng cao</summary><div><label for="video-output-codec">Codec tùy chỉnh</label><input type="text" id="video-output-codec" value="" placeholder="Để trống để Kanrecode tự chọn"><p class="mini-hint">Chỉ nhập khi anh hiểu codec MediaRecorder.</p></div></details>
+    </div>
+    <div class="recording-note">Nếu chọn “Toàn màn hình/Tab” có âm thanh, nhớ bật tùy chọn chia sẻ âm thanh trong hộp thoại của trình duyệt.</div>
+    <button type="button" id="recording-start-button" class="start-recording">● Bắt đầu quay</button>
+  </dialog>
+
+  <dialog id="teleprompt-editor-modal" closedby="closerequest">
+    <button type="button" id="teleprompt-editor-modal-close" autofocus class="close">×</button>
+    <div class="dialog-heading"><span class="dialog-icon">▤</span><div><h2>Lời thoại Teleprompter</h2><p>Mỗi đoạn ngắn là một bước. Nhấn Space để chuyển câu khi chạy.</p></div></div>
+    <p class="mini-hint"><b>~</b> đầu dòng: ghi chú sân khấu · <b>/</b> đầu dòng: ghi chú nội bộ, không đọc.</p>
+    <textarea id="teleprompt-editor" aria-label="Trình soạn lời thoại" placeholder="Nhập lời thoại ở đây..."></textarea>
+  </dialog>
+
+  <dialog id="instructions-modal" closedby="any" class="help-dialog">
+    <button type="button" id="instructions-modal-close" autofocus class="close">×</button>
+    <div class="dialog-heading"><span class="dialog-icon">?</span><div><h2>Dùng Kanrecode trong 1 phút</h2><p>Quy trình ngắn nhất để quay một video hướng dẫn.</p></div></div>
+    <ol class="help-steps">
+      <li><b>Chọn màn hình</b> → chọn Tab, Window hoặc Entire Screen trong hộp thoại trình duyệt.</li>
+      <li><b>Kéo trực tiếp nguồn trên khung xem trước</b>. Bấm nguồn để chỉnh phóng to, xoay, độ mờ ở thanh dưới.</li>
+      <li>Nếu cần, bật <b>Camera người nói</b>, <b>Bút chú thích</b> hoặc <b>Teleprompter</b>.</li>
+      <li>Bấm <b>● Quay</b>. Không cần micro thì giữ “Không dùng micro”.</li>
+      <li>Khi đang quay có thể <b>Tạm dừng</b>, tiếp tục hoặc bấm <b>Dừng quay</b>. Tệp sẽ tự lưu về máy.</li>
+    </ol>
+    <div class="help-grid"><div><strong>Phím nhanh</strong><p>Alt+Z hoàn tác nét vẽ<br>Alt+Y làm lại nét vẽ<br>Alt+X xóa các nét<br>Space chuyển Teleprompter</p></div><div><strong>Mẹo chất lượng</strong><p>1080p · 30 FPS · 8–12 Mbps phù hợp phần lớn video hướng dẫn. 60 FPS chỉ nên dùng khi có nhiều chuyển động.</p></div></div>
+    <div class="license-card"><strong>Nguồn mở & ghi công</strong><p>Kanrecode được phát triển từ SC Screen Recorder của Rik Roots, dùng giấy phép MIT. Bản ghi được xử lý cục bộ; riêng tính năng xóa nền camera tải tài nguyên MediaPipe từ CDN.</p></div>
+  </dialog>
+
+  <script type="module" src="index.js"></script>
+</body>
+</html>
