@@ -27,6 +27,50 @@
       <button type="button" id="instructions-modal-button" class="side-action" data-tooltip="Xem hướng dẫn sử dụng nhanh">? Hướng dẫn nhanh</button>
       <button type="button" id="teleprompt-area-button" class="side-action" data-tooltip="Hiện lời thoại để đọc trong lúc quay">▤ Teleprompter</button>
 
+      <details id="guide-tools-panel" open>
+        <summary data-tooltip="Hiệu ứng dành cho video hướng dẫn · các phím tắt vẫn hoạt động khi có Desktop Helper">Công cụ hướng dẫn</summary>
+        <div class="guide-tool-list">
+          <label class="toggle-row" data-tooltip="Hiện vòng tròn khi click · Ctrl+Shift+H">
+            <span><strong>Highlight click</strong><small>Giúp người xem biết anh vừa bấm ở đâu.</small></span>
+            <input id="click-highlight" type="checkbox" checked>
+          </label>
+          <label class="toggle-row" data-tooltip="Bật/tắt hiển thị phím bấm · Ctrl+Shift+K">
+            <span><strong>Hiện phím bấm</strong><small>Ctrl+Shift+K · mặc định tắt để bảo vệ riêng tư.</small></span>
+            <input id="show-keystrokes" type="checkbox">
+          </label>
+          <label class="toggle-row" data-tooltip="Làm tối phần ngoài vùng con trỏ · Ctrl+Shift+L">
+            <span><strong>Spotlight con trỏ</strong><small>Làm nổi vùng đang thao tác.</small></span>
+            <input id="cursor-spotlight" type="checkbox">
+          </label>
+          <div class="guide-select-row">
+            <label for="auto-zoom-mode">Auto zoom</label>
+            <select id="auto-zoom-mode" data-tooltip="Tắt / zoom khi click / zoom thủ công">
+              <option value="off">Tắt</option>
+              <option value="click" selected>Zoom khi click</option>
+              <option value="manual">Thủ công</option>
+            </select>
+          </div>
+          <div class="guide-select-row">
+            <label for="auto-zoom-level">Mức zoom</label>
+            <input id="auto-zoom-level" type="range" min="1.15" max="1.75" step="0.05" value="1.35" data-tooltip="Mặc định 1.35×">
+          </div>
+          <div class="guide-action-grid">
+            <button type="button" id="manual-zoom-button" class="secondary-button" data-tooltip="Bật/tắt zoom tại con trỏ · Ctrl+Shift+J">⌕ Zoom</button>
+            <button type="button" id="crop-region-button" class="secondary-button" data-tooltip="Khoanh vùng quay · Ctrl+Shift+R">▣ Chọn vùng</button>
+            <button type="button" id="crop-reset-button" class="secondary-button" data-tooltip="Trở lại toàn bộ nguồn quay">↺ Toàn màn hình</button>
+            <button type="button" id="open-recordings-button" class="secondary-button" data-tooltip="Mở thư mục Videos/Kanrecode" hidden>📁 Video</button>
+          </div>
+          <div class="shortcut-strip">
+            <span data-tooltip="Bắt đầu / dừng quay">F9 · Quay</span>
+            <span data-tooltip="Tạm dừng / tiếp tục">F10 · Pause</span>
+            <span data-tooltip="Bật / tắt bút vẽ">Ctrl+Shift+D · Vẽ</span>
+            <span data-tooltip="Bật / tắt hiển thị phím">Ctrl+Shift+K · Phím</span>
+          </div>
+          <div id="desktop-helper-status" class="helper-status">Desktop Helper: đang kiểm tra…</div>
+          <div id="recovery-banner" class="recovery-banner" hidden></div>
+        </div>
+      </details>
+
       <details id="targets-panel" open>
         <summary id="targets-panel-summary" data-tooltip="Quản lý các nguồn màn hình đang quay">Màn hình đã chọn</summary>
         <div>
@@ -77,7 +121,7 @@
       </details>
 
       <details id="scribbles-panel">
-        <summary data-tooltip="Vẽ trực tiếp lên video khi đang quay">Bút chú thích</summary>
+        <summary data-tooltip="Vẽ trực tiếp lên video khi đang quay · Ctrl+Shift+D">Bút chú thích</summary>
         <div>
           <div class="scribbles-parameters">
             <label for="use-scribbles">Bật vẽ</label><input id="use-scribbles" autocomplete="off" type="checkbox">
@@ -119,8 +163,8 @@
       <div id="top-bar">
         <div id="control-buttons">
           <button type="button" id="dimensions-modal-button" disabled data-tooltip="Độ phân giải và tỷ lệ khung hình">▣ Khung hình</button>
-          <button type="button" id="recording-modal-button" class="primary-record" disabled data-tooltip="Cấu hình nhanh và bắt đầu quay">● Quay</button>
-          <button type="button" id="recording-pause-button" class="pause-button" hidden data-tooltip="Tạm dừng/tiếp tục bản ghi">Ⅱ Tạm dừng</button>
+          <button type="button" id="recording-modal-button" class="primary-record" disabled data-tooltip="Cấu hình nhanh và bắt đầu quay · F9">● Quay</button>
+          <button type="button" id="recording-pause-button" class="pause-button" hidden data-tooltip="Tạm dừng/tiếp tục bản ghi · F10">Ⅱ Tạm dừng</button>
         </div>
         <div id="top-right-feedback">
           <span id="status-pill" class="status-pill">Sẵn sàng</span>
@@ -169,12 +213,15 @@
     <div class="recording-parameters">
       <label for="recording-microphone">Microphone</label><select id="recording-microphone"><option value="none">Không dùng micro</option></select>
       <label for="include-system-audio">Âm thanh màn hình/tab</label><label class="switch-line"><input id="include-system-audio" type="checkbox" checked><span>Ghi nếu nguồn chia sẻ có âm thanh</span></label>
+      <label for="recording-countdown">Đếm ngược</label><select id="recording-countdown" data-tooltip="Khoảng chờ trước khi bắt đầu ghi"><option value="0">Tắt</option><option value="3" selected>3 giây · khuyên dùng</option><option value="5">5 giây</option></select>
+      <label for="recording-direct-disk">Video dài</label><label class="switch-line" data-tooltip="Desktop Helper sẽ ghi từng chunk thẳng xuống ổ đĩa, giảm RAM"><input id="recording-direct-disk" type="checkbox" checked><span>Ghi thẳng xuống ổ đĩa</span></label>
       <label for="recording-fps">Khung hình/giây</label><select id="recording-fps"><option value="25">25 FPS · nhẹ</option><option value="30" selected>30 FPS · khuyên dùng</option><option value="60">60 FPS · mượt, nặng hơn</option></select>
       <label for="recording-quality">Chất lượng</label><select id="recording-quality"><option value="4000000">4 Mbps · nhẹ</option><option value="8000000" selected>8 Mbps · cân bằng</option><option value="12000000">12 Mbps · rõ chữ</option><option value="20000000">20 Mbps · rất cao</option></select>
       <label for="file-name">Tên tệp</label><input type="text" id="file-name" value="Kanrecode-recording">
       <label for="video-output-filetype">Định dạng</label><select id="video-output-filetype"><option value="mp4">MP4 nếu trình duyệt hỗ trợ</option><option value="webm">WebM · tương thích tốt</option></select>
       <details class="advanced-settings"><summary>Nâng cao</summary><div><label for="video-output-codec">Codec tùy chỉnh</label><input type="text" id="video-output-codec" value="" placeholder="Để trống để Kanrecode tự chọn"><p class="mini-hint">Chỉ nhập khi anh hiểu codec MediaRecorder.</p></div></details>
     </div>
+    <div id="direct-save-status" class="recording-note">Nếu dùng Desktop Helper, video dài sẽ được ghi trực tiếp vào <b>Videos/Kanrecode</b>. Nếu Helper không chạy, Kanrecode tự quay theo chế độ trình duyệt.</div>
     <div class="recording-note">Nếu chọn “Toàn màn hình/Tab” có âm thanh, nhớ bật tùy chọn chia sẻ âm thanh trong hộp thoại của trình duyệt.</div>
     <button type="button" id="recording-start-button" class="start-recording">● Bắt đầu quay</button>
   </dialog>
@@ -196,9 +243,28 @@
       <li>Bấm <b>● Quay</b>. Không cần micro thì giữ “Không dùng micro”.</li>
       <li>Khi đang quay có thể <b>Tạm dừng</b>, tiếp tục hoặc bấm <b>Dừng quay</b>. Tệp sẽ tự lưu về máy.</li>
     </ol>
-    <div class="help-grid"><div><strong>Phím nhanh</strong><p>Alt+Z hoàn tác nét vẽ<br>Alt+Y làm lại nét vẽ<br>Alt+X xóa các nét<br>Space chuyển Teleprompter</p></div><div><strong>Mẹo chất lượng</strong><p>1080p · 30 FPS · 8–12 Mbps phù hợp phần lớn video hướng dẫn. 60 FPS chỉ nên dùng khi có nhiều chuyển động.</p></div></div>
+    <div class="help-grid"><div><strong>Phím nhanh</strong><p>F9 bắt đầu/dừng quay<br>F10 tạm dừng/tiếp tục<br>Ctrl+Shift+D bật/tắt bút vẽ<br>Ctrl+Shift+K bật/tắt hiển thị phím<br>Ctrl+Shift+R chọn vùng quay<br>Ctrl+Shift+J zoom thủ công<br>Alt+Z/Y/X hoàn tác/làm lại/xóa nét<br>Space chuyển Teleprompter</p></div><div><strong>Mẹo chất lượng</strong><p>1080p · 30 FPS · 8–12 Mbps phù hợp phần lớn video hướng dẫn. Auto zoom hoạt động tốt nhất khi quay toàn màn hình. Với Desktop Helper, phím/click vẫn được nhận khi anh đang thao tác Excel/MISA.</p></div></div>
     <div class="license-card"><strong>Nguồn mở & ghi công</strong><p>Kanrecode được phát triển từ SC Screen Recorder của Rik Roots, dùng giấy phép MIT. Bản ghi được xử lý cục bộ; riêng tính năng xóa nền camera tải tài nguyên MediaPipe từ CDN.</p></div>
   </dialog>
+
+  <div id="countdown-overlay" class="countdown-overlay" hidden aria-live="assertive">
+    <div id="countdown-number" class="countdown-number">3</div>
+    <div class="countdown-caption">Chuẩn bị quay…</div>
+  </div>
+
+  <div id="crop-overlay" class="crop-overlay" hidden>
+    <div id="crop-selection" class="crop-selection">
+      <i data-handle="nw"></i><i data-handle="n"></i><i data-handle="ne"></i>
+      <i data-handle="e"></i><i data-handle="se"></i><i data-handle="s"></i>
+      <i data-handle="sw"></i><i data-handle="w"></i>
+    </div>
+    <div class="crop-toolbar">
+      <strong>Chọn vùng quay</strong>
+      <span id="crop-size-label">Kéo chuột để khoanh vùng</span>
+      <button type="button" id="crop-apply-button">✓ Áp dụng</button>
+      <button type="button" id="crop-cancel-button">Hủy · Esc</button>
+    </div>
+  </div>
 
   <script type="module" src="index.js"></script>
 </body>
