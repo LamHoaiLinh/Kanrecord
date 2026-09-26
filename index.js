@@ -3573,6 +3573,146 @@ const initGuideTools = () => {
 
 
 // ------------------------------------------------------------------------
+// Global shortcuts
+// ------------------------------------------------------------------------
+const initGlobalShortcuts = (recordingApi, guideApi) => {
+
+  const lastActionAt = new Map();
+
+  const runAction = action => {
+    const now = performance.now();
+    const previous = lastActionAt.get(action) || 0;
+    if (now - previous < 220) return;
+    lastActionAt.set(action, now);
+
+    switch (action) {
+      case 'record-toggle':
+        if (recordingApi.isRecordingNow()) recordingApi.stopRecordingNow();
+        else if (!recordingApi.isStartingNow()) recordingApi.startRecordingNow();
+        break;
+
+      case 'pause-toggle':
+        recordingApi.togglePauseRecording();
+        break;
+
+      case 'keys-toggle':
+        guideApi.toggleKeystrokes();
+        break;
+
+      case 'draw-toggle':
+        scribblesUseCheckbox.checked = !scribblesUseCheckbox.checked;
+        scribblesUseCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
+        setAppStatus(scribblesUseCheckbox.checked ? 'Bút chú thích: BẬT' : 'Bút chú thích: TẮT', 'ready');
+        break;
+
+      case 'crop':
+        guideApi.openCrop();
+        break;
+
+      case 'zoom-toggle':
+        guideApi.toggleManualZoom();
+        break;
+
+      case 'click-toggle':
+        guideApi.toggleClickHighlight();
+        break;
+
+      case 'spotlight-toggle':
+        guideApi.toggleSpotlight();
+        break;
+    }
+  };
+
+  const keyText = event => {
+    const key = event.key;
+    const modifierKeys = ['Control', 'Shift', 'Alt', 'Meta'];
+    const special = new Set([
+      'Escape', 'Enter', 'Tab', 'Backspace', 'Delete', 'Insert', 'Home', 'End',
+      'PageUp', 'PageDown', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' ',
+    ]);
+
+    const parts = [];
+    if (event.ctrlKey && key !== 'Control') parts.push('Ctrl');
+    if (event.shiftKey && key !== 'Shift') parts.push('Shift');
+    if (event.altKey && key !== 'Alt') parts.push('Alt');
+    if (event.metaKey && key !== 'Meta') parts.push('Win');
+
+    let label = key;
+    if (key === ' ') label = 'Space';
+    else if (key === 'Escape') label = 'Esc';
+    else if (key === 'ArrowUp') label = '↑';
+    else if (key === 'ArrowDown') label = '↓';
+    else if (key === 'ArrowLeft') label = '←';
+    else if (key === 'ArrowRight') label = '→';
+    else if (key === 'Control') label = 'Ctrl';
+    else if (key === 'Meta') label = 'Win';
+
+    const hasStrongModifier = event.ctrlKey || event.altKey || event.metaKey;
+    const safeSingleKey = special.has(key) || /^F\d{1,2}$/.test(key) || modifierKeys.includes(key);
+
+    // Privacy: do not display plain letters/numbers typed without Ctrl/Alt/Win.
+    if (!safeSingleKey && !hasStrongModifier) return '';
+
+    if (!parts.length || parts[parts.length - 1] !== label) parts.push(label);
+    return parts.join(' + ');
+  };
+
+  const actionFromKeyboardEvent = event => {
+    const key = String(event.key || '').toLowerCase();
+
+    if (event.key === 'F9') return 'record-toggle';
+    if (event.key === 'F10') return 'pause-toggle';
+
+    if (event.ctrlKey && event.shiftKey && key === 'k') return 'keys-toggle';
+    if (event.ctrlKey && event.shiftKey && key === 'd') return 'draw-toggle';
+    if (event.ctrlKey && event.shiftKey && key === 'r') return 'crop';
+    if (event.ctrlKey && event.shiftKey && key === 'j') return 'zoom-toggle';
+    if (event.ctrlKey && event.shiftKey && key === 'h') return 'click-toggle';
+    if (event.ctrlKey && event.shiftKey && key === 'l') return 'spotlight-toggle';
+    return '';
+  };
+
+  window.addEventListener('keydown', event => {
+    if (event.key === 'Escape') {
+      if (GuideState.cropOpen) {
+        event.preventDefault();
+        guideApi.closeCrop();
+        return;
+      }
+      if (currentModal) {
+        event.preventDefault();
+        closeModal();
+        return;
+      }
+      if (scribblesUseCheckbox.checked) {
+        scribblesUseCheckbox.checked = false;
+        scribblesUseCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
+        return;
+      }
+    }
+
+    const action = actionFromKeyboardEvent(event);
+    if (action) {
+      event.preventDefault();
+      event.stopPropagation();
+      runAction(action);
+    }
+
+    if (!DesktopBridge.available && guideApi.isKeystrokesEnabled()) {
+      const text = keyText(event);
+      if (text) guideApi.showKey(text);
+    }
+  }, true);
+
+  DesktopBridge.onEvent(event => {
+    if (event.type === 'shortcut' && event.action) runAction(event.action);
+  });
+
+  return { runAction };
+};
+
+
+// ------------------------------------------------------------------------
 // Control buttons management
 // ------------------------------------------------------------------------
 const dom = scrawl.initializeDomInputs([
