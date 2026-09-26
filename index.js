@@ -234,7 +234,7 @@ const DesktopBridge = {
 
   async openRecordingsFolder() {
     if (!this.available) return;
-    await this.request('/api/open-recordings', { method: 'POST', body: '{}' });
+    await this.request('/api/open-recordings', { method: 'POST' });
   },
 
   async startRecordingFile(filename, extension) {
@@ -1118,11 +1118,16 @@ const initTargets = () => {
             captureTargetMeta.set(targetId, {
               sourceWidth: Number(sourceSettings.width || cameraWidth),
               sourceHeight: Number(sourceSettings.height || cameraHeight),
+              displaySurface: sourceSettings.displaySurface || '',
               originalScale: scale,
               originalStart: ['50%', '50%'],
               crop: { x: 0, y: 0, w: 1, h: 1 },
             });
             GuideState.activeTargetName = targetId;
+
+            if (sourceSettings.displaySurface === 'browser') {
+              setAppStatus('Đã chọn tab trình duyệt · tránh chọn chính tab Kanrecode để không tạo hiệu ứng gương lặp', 'warning');
+            }
 
             // Make the Picture entity draggable
             dragGroup.addArtefacts(targetPicture);
