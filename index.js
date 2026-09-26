@@ -3965,10 +3965,7 @@ const {
   updateBackgroundPicture,
 } = initBackground();
 
-const {
-  startRecordingTimer,
-  stopRecordingTimer,
-} = initVideoRecording();
+const recordingApi = initVideoRecording();
 
 const {
   telepromptTimestamps,
@@ -3977,7 +3974,11 @@ const {
   telepromptHasScript,
 } = initTeleprompter();
 
+const guideApi = initGuideTools();
+initGlobalShortcuts(recordingApi, guideApi);
 initInstructions();
+
+DesktopBridge.init().then(() => guideApi.syncHelperState());
 
 
 // ------------------------------------------------------------------------
