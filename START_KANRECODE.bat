@@ -1,33 +1,31 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-set "PORT=8765"
 
 echo ==========================================
-echo   KANRECODE - LOCAL SCREEN RECORDER
+echo   KANRECODE - DESKTOP HELPER
 echo ==========================================
 echo.
-echo Dang khoi dong tai http://127.0.0.1:%PORT%
+echo Helper se mo Kanrecode tai:
+echo http://127.0.0.1:8765
+echo.
+echo Thu muc video dai:
+echo %%USERPROFILE%%\Videos\Kanrecode
+echo.
 
 where py >nul 2>nul
 if %errorlevel%==0 (
-  start "Kanrecode Local Server" /min py -3 -m http.server %PORT% --bind 127.0.0.1
-  goto :OPEN
+  py -3 kanrecode_server.py
+  exit /b %errorlevel%
 )
 
 where python >nul 2>nul
 if %errorlevel%==0 (
-  start "Kanrecode Local Server" /min python -m http.server %PORT% --bind 127.0.0.1
-  goto :OPEN
+  python kanrecode_server.py
+  exit /b %errorlevel%
 )
 
-echo.
 echo KHONG TIM THAY PYTHON.
-echo Hay cai Python hoac chay Kanrecode bang mot local web server khac.
+echo Hay cai Python 3 hoac chay Kanrecode bang mot local web server khac.
 pause
 exit /b 1
-
-:OPEN
-timeout /t 2 /nobreak >nul
-start "" "http://127.0.0.1:%PORT%"
-exit /b 0
