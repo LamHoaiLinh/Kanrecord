@@ -1578,12 +1578,22 @@ const initVideoRecording = () => {
   const recordingFps = document.getElementById('recording-fps');
   const recordingQuality = document.getElementById('recording-quality');
   const includeSystemAudio = document.getElementById('include-system-audio');
+  const recordingCountdown = document.getElementById('recording-countdown');
+  const recordingDirectDisk = document.getElementById('recording-direct-disk');
   const pauseButton = document.getElementById('recording-pause-button');
+  const countdownOverlay = document.getElementById('countdown-overlay');
+  const countdownNumber = document.getElementById('countdown-number');
 
   const recordedChunks = [];
+  let directSession = null;
+  let directWriteQueue = Promise.resolve();
+  let directWriteError = null;
+  let lastRecordingTime = '00:00:00';
 
   // Keeping track of whether the page is currently recording, or not
   let isRecording = false;
+  let isStarting = false;
+  let isStopping = false;
 
   // Setup and start recording the canvas
   const recordingLockedButtons = [
