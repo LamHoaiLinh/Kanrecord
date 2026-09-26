@@ -160,6 +160,8 @@ if IS_WINDOWS:
         "Ctrl+Shift+D": "draw-toggle",
         "Ctrl+Shift+R": "crop",
         "Ctrl+Shift+J": "zoom-toggle",
+        "Ctrl+Shift+H": "click-toggle",
+        "Ctrl+Shift+L": "spotlight-toggle",
     }
 
     def key_name(vk: int):
