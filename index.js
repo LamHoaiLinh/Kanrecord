@@ -1369,7 +1369,7 @@ const initVideoRecording = () => {
 
   let selectedFiletype = 'mp4';
 
-  // Microphone level meter state
+  // Microphone level meter
   let audioContext,
     analyserNode,
     analyserSource,
@@ -1384,38 +1384,30 @@ const initVideoRecording = () => {
   });
 
   const initMicrophoneAnalyser = () => {
-
     if (!myMicrophone || !myMicrophone.mediaStream) return;
 
     if (!audioContext) {
-
       const Ctor = window.AudioContext || window.webkitAudioContext;
       if (!Ctor) return;
-
       audioContext = new Ctor();
     }
 
-    if (audioContext.state === 'suspended') {
-      audioContext.resume();
-    }
+    if (audioContext.state === 'suspended') audioContext.resume();
 
     analyserNode = audioContext.createAnalyser();
     analyserNode.fftSize = 2048;
     analyserData = new Uint8Array(analyserNode.frequencyBinCount);
-
     analyserSource = audioContext.createMediaStreamSource(myMicrophone.mediaStream);
     analyserSource.connect(analyserNode);
   };
 
   const updateMicrophoneMeter = () => {
-
     if (!analyserNode || !analyserData) {
       meterAnimationId = requestAnimationFrame(updateMicrophoneMeter);
       return;
     }
 
     analyserNode.getByteTimeDomainData(analyserData);
-
     let sumSquares = 0;
     for (let i = 0; i < analyserData.length; i++) {
       const v = analyserData[i] - 128;
@@ -1424,38 +1416,28 @@ const initVideoRecording = () => {
 
     const rms = Math.sqrt(sumSquares / analyserData.length) / 128;
     const level = Math.min(Math.max(rms, 0), 1);
-
     meterBar.style.width = `${(level * 100).toFixed(0)}%`;
     meterBar.style.background = meterColorFactory.getRangeColor(level);
-
     meterAnimationId = requestAnimationFrame(updateMicrophoneMeter);
   };
 
   const startMicrophoneMeter = () => {
-
     if (!analyserNode) initMicrophoneAnalyser();
-
-    if (!meterAnimationId && analyserNode) {
-      meterAnimationId = requestAnimationFrame(updateMicrophoneMeter);
-    }
+    if (!meterAnimationId && analyserNode) meterAnimationId = requestAnimationFrame(updateMicrophoneMeter);
   };
 
   const stopMicrophoneMeter = () => {
-
     if (meterAnimationId) {
       cancelAnimationFrame(meterAnimationId);
       meterAnimationId = null;
     }
-
-    if (meterBar) {
-      meterBar.style.width = '0%';
-    }
+    if (meterBar) meterBar.style.width = '0%';
   };
 
-  // Microphone discovery
+  // Device list
   DeviceManager.onChange(({ microphones }) => {
-
     const frag = document.createDocumentFragment();
+
     const none = document.createElement('option');
     none.value = 'none';
     none.textContent = 'Không dùng micro';
@@ -1472,32 +1454,24 @@ const initVideoRecording = () => {
     setTimeout(() => recordingMicrophone.value = DeviceManager.preferredMicrophone || 'none', 0);
   });
 
-  // Initialize DOM recording button and associated modal
+  // Recording modal
   recordingButton.removeAttribute('disabled');
-  scrawl.addNativeListener(
-    'click',
-    () => {
-      if (!isRecording) openModal(recordingModal, () => DeviceManager.refreshDevices());
-    },
-    recordingButton
-  );
+  scrawl.addNativeListener('click', () => {
+    if (!isRecording && !isStarting) openModal(recordingModal, () => DeviceManager.refreshDevices());
+  }, recordingButton);
 
   scrawl.addNativeListener('click', closeModal, recordingCloseButton);
-  scrawl.addNativeListener('close', closeModal, recordingModal)
-
+  scrawl.addNativeListener('close', closeModal, recordingModal);
   scrawl.addNativeListener('change', () => DeviceManager.preferredMicrophone = recordingMicrophone.value, recordingMicrophone);
-
   scrawl.addNativeListener('change', () => selectedFiletype = recordingFiletype.value, recordingFiletype);
 
-  // Capture and release the microphone feed
+  // Microphone
   let myMicrophone;
 
   const startMicrophone = () => {
-
     if (DeviceManager.preferredMicrophone === 'none') return Promise.resolve(null);
 
     return new Promise((resolve, reject) => {
-
       if (myMicrophone) {
         const realTrack = myMicrophone.mediaStream.getAudioTracks()[0];
         if (realTrack) resolve(realTrack);
@@ -1538,42 +1512,46 @@ const initVideoRecording = () => {
     });
   };
 
-  // Kill the camera media stream and all associated SC objects
   const stopMicrophone = () => {
-
-    // Stop the visual meter first
     stopMicrophoneMeter();
 
-    // Tear down Web Audio graph
     if (analyserSource) {
-      analyserSource.disconnect();
+      try { analyserSource.disconnect(); } catch (_) {}
       analyserSource = null;
     }
-
     if (analyserNode) {
-      analyserNode.disconnect();
+      try { analyserNode.disconnect(); } catch (_) {}
       analyserNode = null;
     }
-
     if (audioContext) {
-      audioContext.close();
+      audioContext.close().catch(() => {});
       audioContext = null;
     }
 
     if (!myMicrophone) return;
 
-    myMicrophone.source.srcObject = null;
-
-    if (myMicrophone.mediaStreamTrack != null) myMicrophone.mediaStreamTrack.stop();
+    try {
+      if (myMicrophone.source) myMicrophone.source.srcObject = null;
+      if (myMicrophone.mediaStream) myMicrophone.mediaStream.getTracks().forEach(track => track.stop());
+      else if (myMicrophone.mediaStreamTrack) myMicrophone.mediaStreamTrack.stop();
+    }
+    catch (_) {}
 
     myMicrophone.kill();
     myMicrophone = null;
   };
 
-  // Local variables used by both startRecording and stopRecording functions
-  let recorder, stopListener, dataCodec,
-    recordingTimerIntervalValue, recordingStartedAt,
-    recordingMixContext = null, recordingMixSources = [];
+  // Shared recording state
+  let recorder = null;
+  let stopListener = null;
+  let dataCodec = '';
+  let recordingTimerIntervalValue = null;
+  let recordingStartedAt = 0;
+  let recordingPausedAt = 0;
+  let recordingPausedTotal = 0;
+
+  let recordingMixContext = null;
+  let recordingMixSources = [];
 
   const recordingFps = document.getElementById('recording-fps');
   const recordingQuality = document.getElementById('recording-quality');
@@ -1590,12 +1568,10 @@ const initVideoRecording = () => {
   let directWriteError = null;
   let lastRecordingTime = '00:00:00';
 
-  // Keeping track of whether the page is currently recording, or not
   let isRecording = false;
   let isStarting = false;
   let isStopping = false;
 
-  // Setup and start recording the canvas
   const recordingLockedButtons = [
     telepromptButton,
     telepromptTestButton,
@@ -1611,7 +1587,7 @@ const initVideoRecording = () => {
     recordingLockedButtons.forEach(btn => btn.removeAttribute('disabled'));
   };
 
-  const buildRecordingAudioTrack = async (microphoneTrack) => {
+  const buildRecordingAudioTrack = async microphoneTrack => {
     const sourceTracks = [];
     if (microphoneTrack) sourceTracks.push(microphoneTrack);
 
@@ -1630,18 +1606,23 @@ const initVideoRecording = () => {
 
     recordingMixContext = new Ctor();
     if (recordingMixContext.state === 'suspended') await recordingMixContext.resume();
+
     const destination = recordingMixContext.createMediaStreamDestination();
     recordingMixSources = sourceTracks.map(track => {
       const source = recordingMixContext.createMediaStreamSource(new MediaStream([track]));
       source.connect(destination);
       return source;
     });
+
     return destination.stream.getAudioTracks()[0] || null;
   };
 
   const releaseRecordingAudioMixer = () => {
-    recordingMixSources.forEach(source => { try { source.disconnect(); } catch (_) {} });
+    recordingMixSources.forEach(source => {
+      try { source.disconnect(); } catch (_) {}
+    });
     recordingMixSources = [];
+
     if (recordingMixContext) {
       recordingMixContext.close().catch(() => {});
       recordingMixContext = null;
@@ -1654,13 +1635,12 @@ const initVideoRecording = () => {
     const candidates = [];
 
     if (customCodec) candidates.push(`video/${requested}; codecs="${customCodec}"`);
-    if (requested === 'mp4') {
-      candidates.push('video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4');
-    }
+    if (requested === 'mp4') candidates.push('video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4');
     candidates.push('video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm');
 
     const mimeType = candidates.find(type => MediaRecorder.isTypeSupported(type)) || '';
     const videoBitsPerSecond = Number(recordingQuality?.value || 8000000);
+
     return mimeType ? { mimeType, videoBitsPerSecond } : { videoBitsPerSecond };
   };
 
@@ -1685,8 +1665,218 @@ const initVideoRecording = () => {
     countdownOverlay.hidden = true;
   };
 
-  const startRecording = async () => {
+  const startRecordingTimer = () => {
+    recordingTimer.removeAttribute('aria-hidden');
+    recordingTimer.style.display = 'block';
+    recordingTimer.textContent = '00:00:00';
+    recordingTimer.setAttribute('aria-label', 'Đã bắt đầu ghi');
 
+    recordingStartedAt = Date.now();
+    recordingPausedAt = 0;
+    recordingPausedTotal = 0;
+    recordingTimerIntervalValue = setInterval(() => {
+      const now = Date.now();
+      const livePause = recordingPausedAt ? now - recordingPausedAt : 0;
+      const elapsed = Math.max(0, Math.floor((now - recordingStartedAt - recordingPausedTotal - livePause) / 1000));
+      const hrs = String(Math.floor(elapsed / 3600)).padStart(2, '0');
+      const mins = String(Math.floor((elapsed % 3600) / 60)).padStart(2, '0');
+      const secs = String(elapsed % 60).padStart(2, '0');
+      recordingTimer.textContent = `${hrs}:${mins}:${secs}`;
+    }, 500);
+  };
+
+  const stopRecordingTimer = () => {
+    if (recordingTimerIntervalValue) clearInterval(recordingTimerIntervalValue);
+    recordingTimerIntervalValue = null;
+    lastRecordingTime = recordingTimer.textContent || lastRecordingTime;
+    recordingTimer.style.display = 'none';
+    recordingTimer.setAttribute('aria-hidden', 'true');
+    recordingTimer.removeAttribute('aria-label');
+  };
+
+  const buildSubtitlePayload = lastTime => {
+    let txtString = '';
+    let srtString = '';
+    let vttString = 'WEBVTT\n\n';
+
+    if (!teleprompterIsRunning) return { txtString, srtString, vttString };
+
+    txtString = telepromptTimestamps.map(item => item.text).join('\n');
+    const len = telepromptTimestamps.length - 1;
+
+    const cue = (item, index, isVtt = false) => {
+      const divider = isVtt ? '.' : ',';
+      const seqNo = isVtt ? '' : `${index + 1}\n`;
+      const endTime = index < len ? telepromptTimestamps[index + 1].time : lastTime;
+      return `${seqNo}${item.time}${divider}000 --> ${endTime}${divider}000\n${item.text}\n${index < len ? '\n' : ''}`;
+    };
+
+    srtString = telepromptTimestamps.map((item, index) => cue(item, index, false)).join('');
+    vttString += telepromptTimestamps.map((item, index) => cue(item, index, true)).join('');
+
+    return { txtString, srtString, vttString };
+  };
+
+  const downloadBlob = (blob, filename) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  const cleanupRecordingUi = hadTeleprompter => {
+    if (hadTeleprompter) enableRecordingTeleprompterButtons();
+    teleprompterIsRunning = false;
+
+    recordingButton.classList.remove('is-recording');
+    recordingButton.textContent = '● Quay';
+    recordingStartButton.removeAttribute('disabled');
+
+    if (pauseButton) {
+      pauseButton.hidden = true;
+      pauseButton.classList.remove('is-paused');
+      pauseButton.textContent = 'Ⅱ Tạm dừng';
+    }
+
+    recorder = null;
+    directSession = null;
+    recordedChunks.length = 0;
+    isRecording = false;
+    isStarting = false;
+    isStopping = false;
+  };
+
+  const finalizeRecording = async () => {
+    const now = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+    const filename = (recordingFilename.value || 'Kanrecode-recording').trim() || 'Kanrecode-recording';
+    const hadTeleprompter = teleprompterIsRunning;
+    const subtitle = buildSubtitlePayload(lastRecordingTime);
+
+    try {
+      await directWriteQueue;
+
+      if (directSession?.id) {
+        const finished = await DesktopBridge.finishRecordingFile(directSession.id);
+        if (!finished?.ok) throw new Error(finished?.error || 'Không hoàn tất được tệp ghi trực tiếp.');
+
+        if (hadTeleprompter) {
+          const subtitleZip = await downloadZip([{
+            name: `${filename}_${stamp}.subtitles.txt`,
+            lastModified: now,
+            input: subtitle.txtString,
+          },{
+            name: `${filename}_${stamp}.subtitles.srt`,
+            lastModified: now,
+            input: subtitle.srtString,
+          },{
+            name: `${filename}_${stamp}.subtitles.vtt`,
+            lastModified: now,
+            input: subtitle.vttString,
+          },{
+            name: `${filename}_${stamp}.teleprompt.txt`,
+            lastModified: now,
+            input: telepromptEditor.value,
+          }]).blob();
+
+          downloadBlob(subtitleZip, `${filename}_${stamp}.subtitles.zip`);
+        }
+
+        setAppStatus(
+          directWriteError
+            ? 'Đã lưu video nhưng có cảnh báo khi ghi chunk · hãy kiểm tra tệp'
+            : 'Đã lưu video vào Videos/Kanrecode',
+          directWriteError ? 'warning' : 'ready'
+        );
+      }
+      else {
+        const videoBlob = new Blob(recordedChunks, { type: dataCodec || `video/${selectedFiletype}` });
+
+        if (!hadTeleprompter) {
+          downloadBlob(videoBlob, `${filename}_${stamp}.${selectedFiletype}`);
+        }
+        else {
+          const zipBlob = await downloadZip([{
+            name: `${filename}_${stamp}.subtitles.txt`,
+            lastModified: now,
+            input: subtitle.txtString,
+          },{
+            name: `${filename}_${stamp}.subtitles.srt`,
+            lastModified: now,
+            input: subtitle.srtString,
+          },{
+            name: `${filename}_${stamp}.subtitles.vtt`,
+            lastModified: now,
+            input: subtitle.vttString,
+          },{
+            name: `${filename}_${stamp}.teleprompt.txt`,
+            lastModified: now,
+            input: telepromptEditor.value,
+          },{
+            name: `${filename}_${stamp}.video.${selectedFiletype}`,
+            lastModified: now,
+            input: videoBlob,
+          }]).blob();
+
+          downloadBlob(zipBlob, `${filename}_${stamp}.zip`);
+        }
+
+        setAppStatus('Đã lưu bản ghi', 'ready');
+      }
+    }
+    catch (err) {
+      console.error('Finalize recording failed:', err);
+      setAppStatus('Không hoàn tất được video · tệp .partial được giữ nếu có', 'danger');
+    }
+    finally {
+      cleanupRecordingUi(hadTeleprompter);
+    }
+  };
+
+  const stopRecording = () => {
+    if (!isRecording || isStopping || !recorder) return;
+
+    isStopping = true;
+
+    if (stopListener) {
+      stopListener();
+      stopListener = null;
+    }
+
+    lastRecordingTime = recordingTimer.textContent || lastRecordingTime;
+    stopRecordingTimer();
+
+    microphoneLevel.style.display = 'none';
+    microphoneLevel.setAttribute('aria-hidden', 'true');
+    stopMicrophoneMeter();
+
+    if (pauseButton) {
+      pauseButton.hidden = true;
+      pauseButton.classList.remove('is-paused');
+      pauseButton.textContent = 'Ⅱ Tạm dừng';
+    }
+
+    setAppStatus('Đang hoàn tất tệp...', 'working');
+
+    try {
+      recorder.stop();
+    }
+    catch (err) {
+      console.error('Recorder stop failed:', err);
+      isStopping = false;
+      setAppStatus('Không dừng được recorder', 'danger');
+      return;
+    }
+
+    stopMicrophone();
+    releaseRecordingAudioMixer();
+  };
+
+  const startRecording = async () => {
     if (isRecording || isStarting || isStopping) return;
 
     isStarting = true;
@@ -1707,20 +1897,19 @@ const initVideoRecording = () => {
       const actualMime = recorder.mimeType || recorderOptions.mimeType || '';
       selectedFiletype = actualMime.includes('mp4') ? 'mp4' : 'webm';
 
+      recordedChunks.length = 0;
       directSession = null;
       directWriteError = null;
       directWriteQueue = Promise.resolve();
-      recordedChunks.length = 0;
 
       if (recordingDirectDisk?.checked && DesktopBridge.available) {
         try {
           directSession = await DesktopBridge.startRecordingFile(recordingFilename.value, selectedFiletype);
-          if (directSession) setAppStatus('Đã mở tệp ghi trực tiếp trên ổ đĩa', 'working');
         }
         catch (err) {
-          console.warn('Direct disk mode unavailable, falling back to browser memory:', err);
+          console.warn('Direct disk mode unavailable:', err);
           directSession = null;
-          setAppStatus('Không mở được chế độ ghi thẳng · đang dùng bộ nhớ trình duyệt', 'warning');
+          setAppStatus('Không mở được ghi thẳng ổ đĩa · chuyển sang RAM', 'warning');
         }
       }
 
@@ -1735,13 +1924,11 @@ const initVideoRecording = () => {
             .then(() => DesktopBridge.writeRecordingChunk(directSession.id, event.data))
             .catch(err => {
               directWriteError = err;
-              console.error('Direct chunk write failed:', err);
-              setAppStatus('Lỗi ghi chunk xuống ổ đĩa · tệp .partial vẫn được giữ', 'danger');
+              console.error('Chunk write failed:', err);
+              setAppStatus('Lỗi ghi chunk · tệp .partial vẫn được giữ', 'danger');
             });
         }
-        else {
-          recordedChunks.push(event.data);
-        }
+        else recordedChunks.push(event.data);
       };
 
       recorder.onerror = event => {
@@ -1749,7 +1936,7 @@ const initVideoRecording = () => {
         setAppStatus('Lỗi ghi video', 'danger');
       };
 
-      recorder.onstop = () => finalizeRecording();
+      recorder.onstop = finalizeRecording;
 
       isRecording = true;
       isStarting = false;
@@ -1761,8 +1948,72 @@ const initVideoRecording = () => {
 
       recorder.start(1000);
 
-      if (pauseButton) pauseButton.addEventListener('click', togglePauseRecording);
+      if (pauseButton) {
+        pauseButton.hidden = false;
+        pauseButton.classList.remove('is-paused');
+        pauseButton.textContent = 'Ⅱ Tạm dừng';
+      }
 
+      if (teleprompterIsVisible) {
+        populateTelepromptState();
+        if (telepromptHasScript()) {
+          teleprompterIsRunning = true;
+          disableRecordingTeleprompterButtons();
+        }
+      }
+
+      startRecordingTimer();
+
+      if (microphoneTrack) {
+        microphoneLevel.removeAttribute('aria-hidden');
+        microphoneLevel.style.display = 'block';
+        startMicrophoneMeter();
+      }
+
+      setAppStatus(directSession ? 'ĐANG QUAY · lưu thẳng ổ đĩa' : 'ĐANG QUAY', 'recording');
+    }
+    catch (err) {
+      if (countdownOverlay) countdownOverlay.hidden = true;
+
+      const message = typeof err === 'string' ? err : (err?.message || String(err));
+      console.warn('Recording aborted:', err);
+      alert(message);
+
+      recordingStartButton.removeAttribute('disabled');
+      recordingButton.classList.remove('is-recording');
+      recordingButton.textContent = '● Quay';
+
+      releaseRecordingAudioMixer();
+      stopMicrophone();
+
+      isStarting = false;
+      isRecording = false;
+      isStopping = false;
+      setAppStatus('Không thể bắt đầu quay', 'danger');
+    }
+  };
+
+  const togglePauseRecording = () => {
+    if (!recorder || !isRecording || isStopping) return;
+
+    if (recorder.state === 'recording') {
+      recorder.pause();
+      recordingPausedAt = Date.now();
+      pauseButton?.classList.add('is-paused');
+      if (pauseButton) pauseButton.textContent = '▶ Tiếp tục';
+      setAppStatus('ĐANG TẠM DỪNG', 'paused');
+    }
+    else if (recorder.state === 'paused') {
+      recorder.resume();
+      if (recordingPausedAt) recordingPausedTotal += Date.now() - recordingPausedAt;
+      recordingPausedAt = 0;
+      pauseButton?.classList.remove('is-paused');
+      if (pauseButton) pauseButton.textContent = 'Ⅱ Tạm dừng';
+      setAppStatus(directSession ? 'ĐANG QUAY · lưu thẳng ổ đĩa' : 'ĐANG QUAY', 'recording');
+    }
+  };
+
+  if (pauseButton) pauseButton.addEventListener('click', togglePauseRecording);
   scrawl.addNativeListener('click', startRecording, recordingStartButton);
 
   return {
