@@ -1,0 +1,45 @@
+name: Validate Kanrecode
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check Python helper syntax
+        run: python -m py_compile kanrecode_server.py
+
+      - name: Check JavaScript syntax
+        run: |
+          cp index.js /tmp/index.mjs
+          node --check /tmp/index.mjs
+
+      - name: Check HTML IDs and JS element references
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          html = Path("index.html").read_text(encoding="utf-8")
+          js = Path("index.js").read_text(encoding="utf-8")
+
+          ids = re.findall(r'\bid=["\']([^"\']+)["\']', html)
+          duplicates = sorted({x for x in ids if ids.count(x) > 1})
+          assert not duplicates, f"Duplicate HTML IDs: {duplicates}"
+
+          html_ids = set(ids)
+          direct_refs = set(re.findall(r"getElementById\(['\"]([^'\"]+)['\"]\)", js))
+          missing = sorted(direct_refs - html_ids)
+          assert not missing, f"getElementById references missing from HTML: {missing}"
+
+          for path in ["index.css", "js/scrawl.js", "js/client-zip.js", "js/mediapipe-vision-bundle.js"]:
+              assert Path(path).exists(), f"Missing required file: {path}"
+
+          print(f"Validated {len(ids)} unique HTML IDs and {len(direct_refs)} direct JS references.")
+          PY
