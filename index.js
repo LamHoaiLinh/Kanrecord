@@ -2650,6 +2650,594 @@ scrawl.makeKeyboardZone({
 
 
 // ------------------------------------------------------------------------
+// Guidance tools: crop, click highlight, keystroke display, spotlight, auto zoom
+// ------------------------------------------------------------------------
+const initGuideTools = () => {
+
+  const clickHighlight = document.getElementById('click-highlight');
+  const showKeystrokes = document.getElementById('show-keystrokes');
+  const cursorSpotlight = document.getElementById('cursor-spotlight');
+  const autoZoomMode = document.getElementById('auto-zoom-mode');
+  const autoZoomLevel = document.getElementById('auto-zoom-level');
+  const manualZoomButton = document.getElementById('manual-zoom-button');
+  const cropRegionButton = document.getElementById('crop-region-button');
+  const cropResetButton = document.getElementById('crop-reset-button');
+  const openRecordingsButton = document.getElementById('open-recordings-button');
+
+  const cropOverlay = document.getElementById('crop-overlay');
+  const cropSelection = document.getElementById('crop-selection');
+  const cropApplyButton = document.getElementById('crop-apply-button');
+  const cropCancelButton = document.getElementById('crop-cancel-button');
+  const cropSizeLabel = document.getElementById('crop-size-label');
+
+  const clickRing = scrawl.makeWheel({
+    name: name('guide-click-ring'),
+    start: ['50%', '50%'],
+    handle: ['center', 'center'],
+    radius: 18,
+    lineWidth: 7,
+    strokeStyle: '#78c99a',
+    method: 'draw',
+    globalAlpha: 0,
+    visibility: false,
+    order: 2200,
+    noUserInteraction: true,
+  });
+
+  const keyBackdrop = scrawl.makeBlock({
+    name: name('guide-key-backdrop'),
+    start: ['50%', '88%'],
+    handle: ['center', 'center'],
+    dimensions: [220, 58],
+    fillStyle: 'rgba(23, 53, 42, 0.90)',
+    method: 'fill',
+    visibility: false,
+    order: 2210,
+    noUserInteraction: true,
+  });
+
+  const keyLabel = scrawl.makeLabel({
+    name: name('guide-key-label'),
+    start: ['50%', '88%'],
+    handle: ['center', 'center'],
+    text: '',
+    fontString: '700 28px "Segoe UI", Arial, sans-serif',
+    fillStyle: '#ffffff',
+    method: 'fill',
+    visibility: false,
+    order: 2211,
+    noUserInteraction: true,
+  });
+
+  const makeShade = suffix => scrawl.makeBlock({
+    name: name(`guide-spotlight-${suffix}`),
+    start: [0, 0],
+    handle: ['left', 'top'],
+    dimensions: [0, 0],
+    fillStyle: 'rgba(9, 38, 26, 0.34)',
+    method: 'fill',
+    visibility: false,
+    order: 2190,
+    noUserInteraction: true,
+  });
+
+  const spotlightBlocks = {
+    top: makeShade('top'),
+    bottom: makeShade('bottom'),
+    left: makeShade('left'),
+    right: makeShade('right'),
+  };
+
+  let clickAnimation = null;
+  let keyHideTimer = null;
+  let zoomAnimation = null;
+  let zoomRestoreTimer = null;
+  let zoomSnapshot = null;
+  let manualZoomActive = false;
+  let cropDraft = { x: 0.08, y: 0.08, w: 0.84, h: 0.84 };
+  let cropDrag = null;
+
+  const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+
+  const getActiveTarget = () => {
+    const id = GuideState.activeTargetName;
+    if (!id) return null;
+    const entity = scrawl.findEntity(id);
+    const meta = captureTargetMeta.get(id);
+    if (!entity || !meta) return null;
+    return { id, entity, meta };
+  };
+
+  const mapPointerToVisibleCrop = (x, y) => {
+    const target = getActiveTarget();
+    if (!target) return { x: clamp(x, 0, 1), y: clamp(y, 0, 1), inside: true };
+
+    const crop = target.meta.crop || { x: 0, y: 0, w: 1, h: 1 };
+    const inside = x >= crop.x && x <= crop.x + crop.w && y >= crop.y && y <= crop.y + crop.h;
+
+    return {
+      x: clamp((x - crop.x) / crop.w, 0, 1),
+      y: clamp((y - crop.y) / crop.h, 0, 1),
+      inside,
+    };
+  };
+
+  const updateSpotlight = () => {
+    const active = !!cursorSpotlight?.checked;
+    Object.values(spotlightBlocks).forEach(block => block.set({ visibility: active }));
+    if (!active) return;
+
+    const mapped = mapPointerToVisibleCrop(GuideState.pointer.x, GuideState.pointer.y);
+    const [w, h] = canvas.base.get('dimensions');
+    const px = mapped.x * w;
+    const py = mapped.y * h;
+    const radiusX = Math.max(80, w * 0.10);
+    const radiusY = Math.max(65, h * 0.12);
+
+    const leftX = clamp(px - radiusX, 0, w);
+    const rightX = clamp(px + radiusX, 0, w);
+    const topY = clamp(py - radiusY, 0, h);
+    const bottomY = clamp(py + radiusY, 0, h);
+
+    spotlightBlocks.top.set({ start: [0, 0], dimensions: [w, topY] });
+    spotlightBlocks.bottom.set({ start: [0, bottomY], dimensions: [w, Math.max(0, h - bottomY)] });
+    spotlightBlocks.left.set({ start: [0, topY], dimensions: [leftX, Math.max(0, bottomY - topY)] });
+    spotlightBlocks.right.set({ start: [rightX, topY], dimensions: [Math.max(0, w - rightX), Math.max(0, bottomY - topY)] });
+  };
+
+  const showKey = text => {
+    if (!showKeystrokes?.checked || !text) return;
+    const [w, h] = canvas.base.get('dimensions');
+    const fontSize = Math.max(22, Math.round(w / 52));
+    const boxWidth = clamp(text.length * fontSize * 0.63 + 54, 150, w * 0.66);
+    const boxHeight = Math.max(52, Math.round(h * 0.075));
+
+    keyBackdrop.set({
+      dimensions: [boxWidth, boxHeight],
+      visibility: true,
+      globalAlpha: 1,
+    });
+    keyLabel.set({
+      text,
+      fontString: `700 ${fontSize}px "Segoe UI", Arial, sans-serif`,
+      visibility: true,
+      globalAlpha: 1,
+    });
+
+    clearTimeout(keyHideTimer);
+    keyHideTimer = setTimeout(() => {
+      keyBackdrop.set({ visibility: false });
+      keyLabel.set({ visibility: false });
+    }, 1500);
+  };
+
+  const pulseClick = (x, y) => {
+    if (!clickHighlight?.checked) return;
+    const mapped = mapPointerToVisibleCrop(x, y);
+    if (!mapped.inside) return;
+
+    const [w, h] = canvas.base.get('dimensions');
+    const startRadius = Math.max(14, Math.round(Math.min(w, h) * 0.018));
+    const endRadius = startRadius * 2.2;
+    const started = performance.now();
+
+    if (clickAnimation) clearInterval(clickAnimation);
+
+    clickRing.set({
+      start: [mapped.x * w, mapped.y * h],
+      radius: startRadius,
+      globalAlpha: 0.92,
+      visibility: true,
+    });
+
+    clickAnimation = setInterval(() => {
+      const t = clamp((performance.now() - started) / 430, 0, 1);
+      clickRing.set({
+        radius: startRadius + ((endRadius - startRadius) * t),
+        globalAlpha: 0.92 * (1 - t),
+      });
+      if (t >= 1) {
+        clearInterval(clickAnimation);
+        clickAnimation = null;
+        clickRing.set({ visibility: false });
+      }
+    }, 20);
+  };
+
+  const numericCoord = (value, total) => {
+    if (typeof value === 'number') return value;
+    if (typeof value === 'string' && value.endsWith('%')) return (parseFloat(value) / 100) * total;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : total / 2;
+  };
+
+  const animateTarget = (entity, scale, startX, startY, duration = 230, onDone = null) => {
+    if (zoomAnimation) clearInterval(zoomAnimation);
+
+    const [cw, ch] = canvas.base.get('dimensions');
+    const currentStart = entity.get('start');
+    const fromX = numericCoord(currentStart[0], cw);
+    const fromY = numericCoord(currentStart[1], ch);
+    const fromScale = Number(entity.get('scale')) || 1;
+    const began = performance.now();
+
+    zoomAnimation = setInterval(() => {
+      const raw = clamp((performance.now() - began) / duration, 0, 1);
+      const t = 1 - Math.pow(1 - raw, 3);
+      entity.set({
+        scale: fromScale + ((scale - fromScale) * t),
+        start: [
+          fromX + ((startX - fromX) * t),
+          fromY + ((startY - fromY) * t),
+        ],
+      });
+      if (raw >= 1) {
+        clearInterval(zoomAnimation);
+        zoomAnimation = null;
+        if (onDone) onDone();
+      }
+    }, 16);
+  };
+
+  const restoreZoom = () => {
+    clearTimeout(zoomRestoreTimer);
+    zoomRestoreTimer = null;
+    manualZoomActive = false;
+    manualZoomButton?.classList.remove('is-active');
+
+    if (!zoomSnapshot) return;
+    const snapshot = zoomSnapshot;
+    const entity = scrawl.findEntity(snapshot.id);
+    zoomSnapshot = null;
+    if (!entity) return;
+    animateTarget(entity, snapshot.scale, snapshot.startX, snapshot.startY, 260);
+  };
+
+  const zoomAt = (x, y, persistent = false) => {
+    const target = getActiveTarget();
+    if (!target) return;
+
+    const mapped = mapPointerToVisibleCrop(x, y);
+    if (!mapped.inside) return;
+
+    const [cw, ch] = canvas.base.get('dimensions');
+    const dims = target.entity.get('dimensions');
+    const width = Number(dims[0]) || target.meta.sourceWidth;
+    const height = Number(dims[1]) || target.meta.sourceHeight;
+
+    if (!zoomSnapshot || zoomSnapshot.id !== target.id) {
+      restoreZoom();
+      const currentStart = target.entity.get('start');
+      zoomSnapshot = {
+        id: target.id,
+        scale: Number(target.entity.get('scale')) || 1,
+        startX: numericCoord(currentStart[0], cw),
+        startY: numericCoord(currentStart[1], ch),
+      };
+    }
+
+    const factor = Number(autoZoomLevel?.value || 1.35);
+    const newScale = zoomSnapshot.scale * factor;
+    const startX = (cw / 2) - ((mapped.x - 0.5) * width * newScale);
+    const startY = (ch / 2) - ((mapped.y - 0.5) * height * newScale);
+
+    animateTarget(target.entity, newScale, startX, startY, 220);
+
+    clearTimeout(zoomRestoreTimer);
+    if (!persistent) zoomRestoreTimer = setTimeout(restoreZoom, 1650);
+  };
+
+  const triggerClick = (x, y) => {
+    GuideState.pointer = { x: clamp(x, 0, 1), y: clamp(y, 0, 1) };
+    GuideState.lastClickAt = Date.now();
+    updateSpotlight();
+    pulseClick(GuideState.pointer.x, GuideState.pointer.y);
+
+    if (autoZoomMode?.value === 'click') zoomAt(GuideState.pointer.x, GuideState.pointer.y, false);
+  };
+
+  const updatePointer = (x, y) => {
+    GuideState.pointer = { x: clamp(x, 0, 1), y: clamp(y, 0, 1) };
+    updateSpotlight();
+
+    if (manualZoomActive && autoZoomMode?.value === 'manual' && zoomSnapshot) {
+      zoomAt(GuideState.pointer.x, GuideState.pointer.y, true);
+    }
+  };
+
+  const applyCrop = rect => {
+    const target = getActiveTarget();
+    if (!target) {
+      setAppStatus('Hãy chọn một nguồn màn hình trước khi crop', 'warning');
+      return false;
+    }
+
+    restoreZoom();
+
+    const sourceWidth = target.meta.sourceWidth;
+    const sourceHeight = target.meta.sourceHeight;
+    const copyX = Math.round(sourceWidth * rect.x);
+    const copyY = Math.round(sourceHeight * rect.y);
+    const copyW = Math.max(2, Math.round(sourceWidth * rect.w));
+    const copyH = Math.max(2, Math.round(sourceHeight * rect.h));
+    const [canvasWidth, canvasHeight] = canvas.base.get('dimensions');
+    const fitScale = Math.min(canvasWidth / copyW, canvasHeight / copyH);
+
+    target.entity.set({
+      copyStartX: copyX,
+      copyStartY: copyY,
+      copyWidth: copyW,
+      copyHeight: copyH,
+      dimensions: [copyW, copyH],
+      start: ['50%', '50%'],
+      handle: ['50%', '50%'],
+      scale: fitScale,
+    });
+
+    target.meta.crop = { ...rect };
+    cropRegionButton?.classList.add('is-active');
+    updateEntityControls(target.entity, targetNamesObject[target.id] || target.id);
+    setAppStatus(`Đã áp dụng vùng quay ${Math.round(rect.w * 100)}% × ${Math.round(rect.h * 100)}%`, 'ready');
+    return true;
+  };
+
+  const resetCrop = () => {
+    const target = getActiveTarget();
+    if (!target) return;
+
+    restoreZoom();
+    const sourceWidth = target.meta.sourceWidth;
+    const sourceHeight = target.meta.sourceHeight;
+
+    target.entity.set({
+      copyStartX: 0,
+      copyStartY: 0,
+      copyWidth: sourceWidth,
+      copyHeight: sourceHeight,
+      dimensions: [sourceWidth, sourceHeight],
+      start: target.meta.originalStart,
+      handle: ['50%', '50%'],
+      scale: target.meta.originalScale,
+    });
+
+    target.meta.crop = { x: 0, y: 0, w: 1, h: 1 };
+    cropRegionButton?.classList.remove('is-active');
+    updateEntityControls(target.entity, targetNamesObject[target.id] || target.id);
+    setAppStatus('Đã trở lại toàn bộ nguồn quay', 'ready');
+  };
+
+  const renderCropDraft = () => {
+    const rect = cropDraft;
+    cropSelection.style.left = `${rect.x * 100}%`;
+    cropSelection.style.top = `${rect.y * 100}%`;
+    cropSelection.style.width = `${rect.w * 100}%`;
+    cropSelection.style.height = `${rect.h * 100}%`;
+
+    const target = getActiveTarget();
+    if (target) {
+      cropSizeLabel.textContent = `${Math.round(target.meta.sourceWidth * rect.w)} × ${Math.round(target.meta.sourceHeight * rect.h)} px`;
+    }
+    else cropSizeLabel.textContent = `${Math.round(rect.w * 100)}% × ${Math.round(rect.h * 100)}%`;
+  };
+
+  const positionCropOverlay = () => {
+    const rect = canvas.domElement.getBoundingClientRect();
+    cropOverlay.style.left = `${rect.left}px`;
+    cropOverlay.style.top = `${rect.top}px`;
+    cropOverlay.style.width = `${rect.width}px`;
+    cropOverlay.style.height = `${rect.height}px`;
+  };
+
+  const openCrop = () => {
+    const target = getActiveTarget();
+    if (!target) {
+      setAppStatus('Hãy chọn một nguồn màn hình trước', 'warning');
+      return;
+    }
+
+    restoreZoom();
+    positionCropOverlay();
+    const existing = target.meta.crop || { x: 0, y: 0, w: 1, h: 1 };
+    cropDraft = (existing.w < 0.995 || existing.h < 0.995)
+      ? { ...existing }
+      : { x: 0.08, y: 0.08, w: 0.84, h: 0.84 };
+
+    cropOverlay.hidden = false;
+    GuideState.cropOpen = true;
+    renderCropDraft();
+    setAppStatus('Kéo khung xanh để chọn vùng quay · Esc để hủy', 'working');
+  };
+
+  const closeCrop = () => {
+    cropOverlay.hidden = true;
+    GuideState.cropOpen = false;
+    cropDrag = null;
+    if (!isRecordingStatus()) setAppStatus('Sẵn sàng', 'ready');
+  };
+
+  const isRecordingStatus = () => document.getElementById('recording-modal-button')?.classList.contains('is-recording');
+
+  const pointFromCropEvent = event => {
+    const rect = cropOverlay.getBoundingClientRect();
+    return {
+      x: clamp((event.clientX - rect.left) / rect.width, 0, 1),
+      y: clamp((event.clientY - rect.top) / rect.height, 0, 1),
+    };
+  };
+
+  cropOverlay?.addEventListener('pointerdown', event => {
+    if (event.target.closest('.crop-toolbar')) return;
+
+    const p = pointFromCropEvent(event);
+    const handle = event.target?.dataset?.handle || '';
+    const insideSelection = event.target === cropSelection || !!event.target.closest('.crop-selection');
+
+    cropDrag = {
+      mode: handle ? 'resize' : insideSelection ? 'move' : 'new',
+      handle,
+      start: p,
+      initial: { ...cropDraft },
+    };
+
+    if (cropDrag.mode === 'new') cropDraft = { x: p.x, y: p.y, w: 0.03, h: 0.03 };
+    cropOverlay.setPointerCapture?.(event.pointerId);
+    event.preventDefault();
+  });
+
+  cropOverlay?.addEventListener('pointermove', event => {
+    if (!cropDrag) return;
+    const p = pointFromCropEvent(event);
+    const dx = p.x - cropDrag.start.x;
+    const dy = p.y - cropDrag.start.y;
+    const minSize = 0.03;
+    const initial = cropDrag.initial;
+
+    if (cropDrag.mode === 'new') {
+      const x1 = Math.min(cropDrag.start.x, p.x);
+      const y1 = Math.min(cropDrag.start.y, p.y);
+      const x2 = Math.max(cropDrag.start.x, p.x);
+      const y2 = Math.max(cropDrag.start.y, p.y);
+      cropDraft = {
+        x: clamp(x1, 0, 1 - minSize),
+        y: clamp(y1, 0, 1 - minSize),
+        w: Math.max(minSize, x2 - x1),
+        h: Math.max(minSize, y2 - y1),
+      };
+    }
+    else if (cropDrag.mode === 'move') {
+      cropDraft = {
+        ...initial,
+        x: clamp(initial.x + dx, 0, 1 - initial.w),
+        y: clamp(initial.y + dy, 0, 1 - initial.h),
+      };
+    }
+    else {
+      let left = initial.x;
+      let top = initial.y;
+      let right = initial.x + initial.w;
+      let bottom = initial.y + initial.h;
+      const h = cropDrag.handle;
+
+      if (h.includes('w')) left = clamp(initial.x + dx, 0, right - minSize);
+      if (h.includes('e')) right = clamp(right + dx, left + minSize, 1);
+      if (h.includes('n')) top = clamp(initial.y + dy, 0, bottom - minSize);
+      if (h.includes('s')) bottom = clamp(bottom + dy, top + minSize, 1);
+
+      cropDraft = { x: left, y: top, w: right - left, h: bottom - top };
+    }
+
+    renderCropDraft();
+    event.preventDefault();
+  });
+
+  cropOverlay?.addEventListener('pointerup', event => {
+    cropDrag = null;
+    try { cropOverlay.releasePointerCapture?.(event.pointerId); } catch (_) {}
+  });
+
+  cropApplyButton?.addEventListener('click', () => {
+    if (applyCrop(cropDraft)) closeCrop();
+  });
+  cropCancelButton?.addEventListener('click', closeCrop);
+  cropRegionButton?.addEventListener('click', openCrop);
+  cropResetButton?.addEventListener('click', resetCrop);
+
+  manualZoomButton?.addEventListener('click', () => {
+    if (manualZoomActive) {
+      restoreZoom();
+      return;
+    }
+    autoZoomMode.value = 'manual';
+    manualZoomActive = true;
+    manualZoomButton.classList.add('is-active');
+    zoomAt(GuideState.pointer.x, GuideState.pointer.y, true);
+    syncHelperState();
+  });
+
+  autoZoomMode?.addEventListener('change', () => {
+    if (autoZoomMode.value !== 'manual') restoreZoom();
+    syncHelperState();
+  });
+
+  cursorSpotlight?.addEventListener('change', () => {
+    updateSpotlight();
+    syncHelperState();
+  });
+
+  clickHighlight?.addEventListener('change', syncHelperState);
+  showKeystrokes?.addEventListener('change', syncHelperState);
+  openRecordingsButton?.addEventListener('click', () => DesktopBridge.openRecordingsFolder());
+
+  function syncHelperState() {
+    DesktopBridge.syncState({
+      keys: !!showKeystrokes?.checked,
+      pointer: !!clickHighlight?.checked || !!cursorSpotlight?.checked || autoZoomMode?.value !== 'off',
+    });
+  }
+
+  const canvasPoint = event => {
+    const rect = canvas.domElement.getBoundingClientRect();
+    if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) return null;
+    return {
+      x: (event.clientX - rect.left) / rect.width,
+      y: (event.clientY - rect.top) / rect.height,
+    };
+  };
+
+  window.addEventListener('pointermove', event => {
+    if (DesktopBridge.available || GuideState.cropOpen) return;
+    const p = canvasPoint(event);
+    if (p) updatePointer(p.x, p.y);
+  }, { passive: true });
+
+  window.addEventListener('pointerdown', event => {
+    if (DesktopBridge.available || GuideState.cropOpen) return;
+    const p = canvasPoint(event);
+    if (p) triggerClick(p.x, p.y);
+  }, { passive: true });
+
+  DesktopBridge.onEvent(event => {
+    if (event.type === 'pointer') updatePointer(Number(event.x), Number(event.y));
+    else if (event.type === 'click') triggerClick(Number(event.x), Number(event.y));
+    else if (event.type === 'key') showKey(String(event.text || ''));
+    else if (event.type === 'helper-warning') setAppStatus(event.message || 'Desktop Helper cảnh báo', 'warning');
+  });
+
+  window.addEventListener('resize', () => {
+    if (GuideState.cropOpen) positionCropOverlay();
+  });
+
+  syncHelperState();
+
+  return {
+    showKey,
+    triggerClick,
+    updatePointer,
+    openCrop,
+    closeCrop,
+    resetCrop,
+    restoreZoom,
+    toggleManualZoom: () => manualZoomButton?.click(),
+    toggleKeystrokes: () => {
+      showKeystrokes.checked = !showKeystrokes.checked;
+      showKeystrokes.dispatchEvent(new Event('change', { bubbles: true }));
+      setAppStatus(showKeystrokes.checked ? 'Hiện phím bấm: BẬT' : 'Hiện phím bấm: TẮT', 'ready');
+    },
+    toggleSpotlight: () => {
+      cursorSpotlight.checked = !cursorSpotlight.checked;
+      cursorSpotlight.dispatchEvent(new Event('change', { bubbles: true }));
+    },
+    toggleClickHighlight: () => {
+      clickHighlight.checked = !clickHighlight.checked;
+      clickHighlight.dispatchEvent(new Event('change', { bubbles: true }));
+    },
+    isKeystrokesEnabled: () => !!showKeystrokes.checked,
+    syncHelperState,
+  };
+};
+
+
+// ------------------------------------------------------------------------
 // Control buttons management
 // ------------------------------------------------------------------------
 const dom = scrawl.initializeDomInputs([
