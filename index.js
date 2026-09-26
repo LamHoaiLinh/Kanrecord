@@ -1113,6 +1113,17 @@ const initTargets = () => {
               scale,
             });
 
+            const sourceTrack = mycamera.mediaStream?.getVideoTracks?.()[0] || mycamera.mediaStreamTrack;
+            const sourceSettings = sourceTrack?.getSettings?.() || {};
+            captureTargetMeta.set(targetId, {
+              sourceWidth: Number(sourceSettings.width || cameraWidth),
+              sourceHeight: Number(sourceSettings.height || cameraHeight),
+              originalScale: scale,
+              originalStart: ['50%', '50%'],
+              crop: { x: 0, y: 0, w: 1, h: 1 },
+            });
+            GuideState.activeTargetName = targetId;
+
             // Make the Picture entity draggable
             dragGroup.addArtefacts(targetPicture);
 
@@ -1230,6 +1241,8 @@ const initTargets = () => {
 
         targetPicture.kill();
         capturedTargetStreams.delete(targetId);
+        captureTargetMeta.delete(targetId);
+        if (GuideState.activeTargetName === targetId) GuideState.activeTargetName = null;
         mycamera.kill();
         setAppStatus('Đã xóa nguồn màn hình');
 
@@ -2154,6 +2167,8 @@ const initUpdates = () => {
   const updateEntityControls = (entity, label) => {
 
     if (entity && label) {
+
+      GuideState.activeTargetName = entity.name;
 
       updateGroup.setArtefacts({
         method: 'fill',
