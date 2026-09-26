@@ -154,8 +154,8 @@ if IS_WINDOWS:
         SPECIAL_KEYS[0x6F + i] = f"F{i}"
 
     RESERVED = {
-        "F9": "record-toggle",
-        "F10": "pause-toggle",
+        "Ctrl+Shift+F9": "record-toggle",
+        "Ctrl+Shift+F10": "pause-toggle",
         "Ctrl+Shift+K": "keys-toggle",
         "Ctrl+Shift+D": "draw-toggle",
         "Ctrl+Shift+R": "crop",
