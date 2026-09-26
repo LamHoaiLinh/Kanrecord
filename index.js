@@ -103,6 +103,170 @@ const setAppStatus = (text, mode = 'ready') => {
 };
 
 
+const captureTargetMeta = new Map();
+
+const GuideState = {
+  activeTargetName: null,
+  pointer: { x: 0.5, y: 0.5 },
+  lastClickAt: 0,
+  cropOpen: false,
+};
+
+const DesktopBridge = {
+  available: false,
+  windowsHooks: false,
+  recordingsDir: '',
+  recovery: [],
+  lastEventId: 0,
+  eventTimer: null,
+  listeners: new Set(),
+
+  onEvent(fn) {
+    if (typeof fn === 'function') this.listeners.add(fn);
+    return () => this.listeners.delete(fn);
+  },
+
+  emit(event) {
+    this.listeners.forEach(fn => {
+      try { fn(event); }
+      catch (err) { console.warn('Desktop helper event handler failed:', err); }
+    });
+  },
+
+  async request(path, options = {}) {
+    const response = await fetch(path, {
+      cache: 'no-store',
+      ...options,
+      headers: {
+        ...(options.body && !(options.body instanceof Blob) ? {'Content-Type': 'application/json'} : {}),
+        ...(options.headers || {}),
+      },
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return response.json();
+  },
+
+  async init() {
+    const status = document.getElementById('desktop-helper-status');
+    const openFolder = document.getElementById('open-recordings-button');
+    const directDisk = document.getElementById('recording-direct-disk');
+    const directSaveStatus = document.getElementById('direct-save-status');
+    const recoveryBanner = document.getElementById('recovery-banner');
+
+    try {
+      const info = await this.request('/api/health');
+      this.available = !!info.helper;
+      this.windowsHooks = !!info.windowsHooks;
+      this.recordingsDir = info.recordingsDir || '';
+      this.recovery = Array.isArray(info.recovery) ? info.recovery : [];
+
+      if (status) {
+        status.textContent = this.windowsHooks
+          ? 'Desktop Helper: ON · phím/chuột toàn Windows'
+          : 'Desktop Helper: ON · không có Windows hook';
+        status.classList.add('is-online');
+        status.title = this.recordingsDir ? `Video dài: ${this.recordingsDir}` : '';
+      }
+      if (openFolder) openFolder.hidden = false;
+      if (directDisk) {
+        directDisk.disabled = false;
+        directDisk.checked = true;
+      }
+      if (directSaveStatus && this.recordingsDir) {
+        directSaveStatus.innerHTML = `Video dài sẽ ghi trực tiếp vào <b>${this.recordingsDir}</b>, không giữ toàn bộ video trong RAM.`;
+      }
+      if (recoveryBanner && this.recovery.length) {
+        recoveryBanner.hidden = false;
+        recoveryBanner.textContent = `Phát hiện ${this.recovery.length} tệp .partial từ phiên quay chưa hoàn tất. Bấm “Video” để mở thư mục.`;
+      }
+
+      this.startPolling();
+      return true;
+    }
+    catch (err) {
+      this.available = false;
+      if (status) {
+        status.textContent = 'Desktop Helper: OFF · phím/click chỉ hoạt động trong Kanrecode';
+        status.classList.add('is-offline');
+      }
+      if (directDisk) {
+        directDisk.checked = false;
+        directDisk.disabled = true;
+      }
+      if (directSaveStatus) {
+        directSaveStatus.textContent = 'Desktop Helper chưa chạy: video sẽ được giữ trong bộ nhớ trình duyệt và tải xuống khi dừng quay.';
+      }
+      return false;
+    }
+  },
+
+  startPolling() {
+    if (!this.available || this.eventTimer) return;
+
+    const poll = async () => {
+      if (!this.available) return;
+      try {
+        const data = await this.request(`/api/events?since=${this.lastEventId}`);
+        const events = Array.isArray(data.events) ? data.events : [];
+        events.forEach(event => this.emit(event));
+        this.lastEventId = Number(data.lastId || this.lastEventId);
+      }
+      catch (err) {
+        console.warn('Desktop Helper polling paused:', err);
+      }
+      this.eventTimer = setTimeout(poll, 65);
+    };
+    poll();
+  },
+
+  async syncState(state) {
+    if (!this.available) return;
+    try {
+      await this.request('/api/state', {
+        method: 'POST',
+        body: JSON.stringify(state),
+      });
+    }
+    catch (err) {
+      console.warn('Cannot sync Desktop Helper state:', err);
+    }
+  },
+
+  async openRecordingsFolder() {
+    if (!this.available) return;
+    await this.request('/api/open-recordings', { method: 'POST', body: '{}' });
+  },
+
+  async startRecordingFile(filename, extension) {
+    if (!this.available) return null;
+    const data = await this.request('/api/recording/start', {
+      method: 'POST',
+      body: JSON.stringify({ filename, extension }),
+    });
+    return data.ok ? data : null;
+  },
+
+  async writeRecordingChunk(id, blob) {
+    if (!this.available || !id || !blob?.size) return;
+    const response = await fetch(`/api/recording/chunk?id=${encodeURIComponent(id)}`, {
+      method: 'POST',
+      cache: 'no-store',
+      body: blob,
+    });
+    if (!response.ok) throw new Error(`Chunk write failed: HTTP ${response.status}`);
+    return response.json();
+  },
+
+  async finishRecordingFile(id) {
+    if (!this.available || !id) return null;
+    return this.request('/api/recording/finish', {
+      method: 'POST',
+      body: JSON.stringify({ id }),
+    });
+  },
+};
+
+
 // ------------------------------------------------------------------------
 // Modal management
 // ------------------------------------------------------------------------
